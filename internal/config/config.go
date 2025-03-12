@@ -42,24 +42,20 @@ var DefaultConfig = Config{
 
 // SetupDefaultConfig creates a default configuration file if none exists
 func SetupDefaultConfig() error {
-	// Check if file already exists
 	if _, err := os.Stat(DefaultConfigPath); err == nil {
-		return nil // File exists, no need to create
+		return nil
 	}
 
-	// Create default config
 	data, err := json.MarshalIndent(DefaultConfig, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	// Ensure directory exists
 	configDir := filepath.Dir(DefaultConfigPath)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return err
 	}
 
-	// Write config file
 	return os.WriteFile(DefaultConfigPath, data, 0o644)
 }
 
@@ -87,4 +83,3 @@ func SaveConfig(config *Config, path string) error {
 
 	return os.WriteFile(path, data, 0o644)
 }
-

@@ -38,7 +38,6 @@ func NewExpirationManager(configPath string) (*ExpirationManager, error) {
 		stopChan:   make(chan struct{}),
 	}
 
-	// Try to load config file, if it exists
 	if err := manager.LoadConfig(); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to load expiration config: %v", err)
 	}
@@ -58,7 +57,6 @@ func (m *ExpirationManager) LoadConfig() error {
 		return fmt.Errorf("invalid config file format: %v", err)
 	}
 
-	// Validate config values
 	if cfg.MinAge <= 0 {
 		return fmt.Errorf("min_age_days must be greater than 0")
 	}
@@ -79,7 +77,7 @@ func (m *ExpirationManager) LoadConfig() error {
 // Start begins the expiration checking process
 func (m *ExpirationManager) Start() {
 	go func() {
-		m.cleanupExpiredFiles() // Run once immediately
+		m.cleanupExpiredFiles()
 
 		ticker := time.NewTicker(time.Duration(m.Config.CheckInterval) * time.Minute)
 		defer ticker.Stop()
@@ -114,10 +112,10 @@ func (m *ExpirationManager) calculateRetention(fileSize float64) time.Duration {
 
 	// Apply the formula:
 	// retention = min_age + (min_age - max_age) * pow((file_size / max_size - 1), 3)
-	// Note: This formula decreases retention as file size increases
+	// NOTE: This formula decreases retention as file size increases
 	fileSizeRatio := fileSizeMiB/m.Config.MaxSize - 1
-	ageDiff := float64(m.Config.MinAge - m.Config.MaxAge)  // This will be negative (min_age < max_age)
-	additionalDays := ageDiff * math.Pow(fileSizeRatio, 3) // This will further reduce the retention
+	ageDiff := float64(m.Config.MinAge - m.Config.MaxAge)
+	additionalDays := ageDiff * math.Pow(fileSizeRatio, 3)
 
 	// Calculate total days, which will be less than min_age for large files
 	totalDays := float64(m.Config.MinAge) + additionalDays
@@ -132,30 +130,25 @@ func (m *ExpirationManager) calculateRetention(fileSize float64) time.Duration {
 
 // CheckMetadataExpiration checks if a file has expired based on its metadata
 func (m *ExpirationManager) CheckMetadataExpiration(metadataPath string) (bool, error) {
-	// Read metadata file
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		return false, err
 	}
 
-	// Parse metadata
 	var metadata FileMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return false, err
 	}
 
-	// Check if file has explicit expiration date
 	if !metadata.ExpiresAt.IsZero() {
 		return time.Now().After(metadata.ExpiresAt), nil
 	}
 
-	// If no expiration date is set in metadata, calculate based on retention policy
 	if metadata.UploadDate.IsZero() {
 		// If upload date is missing, we can't calculate expiration
 		return false, nil
 	}
 
-	// Calculate retention based on file size and upload date
 	retention := m.calculateRetention(float64(metadata.Size))
 	expirationTime := metadata.UploadDate.Add(retention)
 
@@ -183,7 +176,6 @@ func (m *ExpirationManager) cleanupExpiredFiles() {
 			continue
 		}
 
-		// Skip metadata files, we'll handle them with their corresponding files
 		if strings.HasSuffix(file.Name(), ".meta") {
 			continue
 		}
@@ -192,9 +184,7 @@ func (m *ExpirationManager) cleanupExpiredFiles() {
 		filePath := filepath.Join(uploadPath, file.Name())
 		metadataPath := filePath + ".meta"
 
-		// Check if metadata exists
 		if _, err := os.Stat(metadataPath); err == nil {
-			// Use metadata for expiration check
 			expired, err := m.CheckMetadataExpiration(metadataPath)
 			if err != nil {
 				log.Printf("Error checking metadata expiration for %s: %v", file.Name(), err)
@@ -206,7 +196,6 @@ func (m *ExpirationManager) cleanupExpiredFiles() {
 				if err := os.Remove(filePath); err != nil {
 					log.Printf("Error removing expired file %s: %v", filePath, err)
 				} else {
-					// Also remove the metadata file
 					if err := os.Remove(metadataPath); err != nil {
 						log.Printf("Error removing metadata file %s: %v", metadataPath, err)
 					}
@@ -216,18 +205,15 @@ func (m *ExpirationManager) cleanupExpiredFiles() {
 			continue
 		}
 
-		// Fallback to standard file expiration check
 		fileInfo, err := os.Stat(filePath)
 		if err != nil {
 			log.Printf("Error getting file info for %s: %v", filePath, err)
 			continue
 		}
 
-		// Calculate the retention period based on file size
 		retention := m.calculateRetention(float64(fileInfo.Size()))
 		expirationTime := fileInfo.ModTime().Add(retention)
 
-		// If the file has expired, remove it
 		if time.Now().After(expirationTime) {
 			if err := os.Remove(filePath); err != nil {
 				log.Printf("Error removing expired file %s: %v", filePath, err)
@@ -249,4 +235,3 @@ func (m *ExpirationManager) GetExpirationDate(fileSize int64) time.Time {
 	retention := m.calculateRetention(float64(fileSize))
 	return time.Now().Add(retention)
 }
-
